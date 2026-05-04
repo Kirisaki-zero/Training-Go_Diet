@@ -78,8 +78,8 @@ INGREDIENT_ALIAS = {
     "susu": "milk, whole",
 
     # Karbohidrat
-    "nasi": "rice, white, cooked",
-    "beras": "rice, white, cooked",
+    "nasi": "rice, white, cooked, no added fat",
+    "beras": "rice, white, cooked, no added fat",
     "tepung": "wheat flour",
     "oat": "oats, raw",
     "oatmeal": "oats, raw",
@@ -238,9 +238,29 @@ def parse_ingredient_line(line: str):
 # 4. MATCHING KE DATABASE
 # ─────────────────────────────────────────────────────────────────────────────
 
+NUTRISI_COLS = ["kalori", "protein_g", "karbohidrat_g", "lemak_g", "serat_g", "gula_g"]
+
 def load_food_db(csv_path: str) -> pd.DataFrame:
-    df = pd.read_csv(csv_path)
-    df["nama_lower"] = df["nama_makanan"].str.lower()
+    """Loads the food nutrition CSV database."""
+    try:
+        # Assume no header, so pandas doesn't eat the first row
+        df = pd.read_csv(csv_path, header=None)
+        
+        # Based on CSV structure, column 1 contains the descriptive name
+        # e.g., rice,"rice, white, cooked, no added fat",...
+        df["nama_lower"] = df[1].astype(str).str.lower().str.strip('"').str.strip()
+        
+        # Name the columns for easier access, making the code more readable.
+        # Structure: category, name, protein, carbs, fat, fiber, sugar, calories
+        df.columns = [
+            'category', 'nama_makanan', 'protein_g', 'karbohidrat_g', 'lemak_g', 
+            'serat_g', 'gula_g', 'kalori', 'nama_lower'
+        ]
+    except Exception as e:
+        print(f"[ERROR] Failed to load or process food DB: {e}")
+        # Return an empty dataframe with expected columns to prevent crashes
+        return pd.DataFrame(columns=NUTRISI_COLS + ['nama_lower'])
+        
     return df
 
 
@@ -284,8 +304,6 @@ def find_food(ingredient_name: str, db: pd.DataFrame, score_cutoff: int = 55):
 # 5. HITUNG NUTRISI SATU RESEP
 # ─────────────────────────────────────────────────────────────────────────────
 
-NUTRISI_COLS = ["kalori", "protein_g", "karbohidrat_g", "lemak_g", "serat_g", "gula_g"]
-
 def calc_recipe_nutrition(ingredients: list[str], db: pd.DataFrame) -> dict:
     """
     Hitung total nutrisi dari list bahan (teks mentah).
@@ -314,7 +332,8 @@ def calc_recipe_nutrition(ingredients: list[str], db: pd.DataFrame) -> dict:
         if row is not None:
             scale = gram / 100.0
             for col in NUTRISI_COLS:
-                val = round(float(row[col]) * scale, 2)
+                # Use .get(col, 0) to avoid KeyError if a column is missing
+                val = round(float(row.get(col, 0)) * scale, 2)
                 item["nutrisi"][col] = val
                 total[col] += val
         else:
@@ -353,6 +372,7 @@ SAMPLE_RECIPES = [
             "1 sdm minyak goreng",
             "1-2 lembar daun jeruk",
             "Sejumput garam",
+            "45g nasi"
         ],
         "steps": ["Goreng terong...", "Tumis bumbu..."]
     }
@@ -360,7 +380,7 @@ SAMPLE_RECIPES = [
 
 
 def main():
-    DB_PATH = r"C:\Users\alama\Downloads\Makanan\kalori training\food_siap_training.csv"
+    DB_PATH = "food_siap_training.csv"
     SCRAPE_INPUT = "cookpad_diet_results.json"
     OUTPUT_PATH = "nutrition_results.json"
 
